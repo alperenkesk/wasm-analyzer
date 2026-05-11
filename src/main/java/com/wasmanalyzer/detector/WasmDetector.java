@@ -91,6 +91,7 @@ public class WasmDetector {
             if (body != null && body.length >= 4) {
                 return new DetectionResult(true, body, DetectionResult.Source.DIRECT);
             }
+            return new DetectionResult(true, body, DetectionResult.Source.DIRECT);
         }
 
         if (body != null) {

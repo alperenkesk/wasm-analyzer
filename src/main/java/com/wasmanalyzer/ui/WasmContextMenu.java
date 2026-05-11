@@ -41,13 +41,16 @@ public class WasmContextMenu implements ContextMenuItemsProvider {
                 url = rr.request().url();
             }
 
-            if (body == null || body.length < 4) {
-                return emptyList();
-            }
-
             WasmDetector.DetectionResult result = detector.detect(body, url, null);
             if (!result.detected) {
                 return emptyList();
+            }
+
+            if (result.wasmBytes == null) {
+                JMenuItem item = new JMenuItem("Send to WASM Analyzer (capture on response)");
+                item.setEnabled(false);
+                item.setToolTipText("Forward the request — WASM will be captured automatically from the response.");
+                return List.of(item);
             }
 
             final byte[] wasmBytes = java.util.Arrays.copyOf(result.wasmBytes, result.wasmBytes.length);

@@ -1,5 +1,6 @@
 package com.wasmanalyzer.model;
 
+import burp.api.montoya.http.message.HttpRequestResponse;
 import com.wasmanalyzer.detector.WasmDetector;
 import com.wasmanalyzer.parser.WasmParseResult;
 import com.wasmanalyzer.scanner.SecretScanner;
@@ -18,6 +19,7 @@ public class WasmCapture {
     public final String url;
     public volatile byte[] wasmBytes;
     public final WasmDetector.DetectionResult.Source detectionSource;
+    public final HttpRequestResponse requestResponse;
 
     public volatile WasmParseResult parseResult;
     public volatile String watText;
@@ -28,13 +30,15 @@ public class WasmCapture {
     public volatile String sourceMapContent;
 
     public WasmCapture(String id, Direction direction, String url,
-                       byte[] wasmBytes, WasmDetector.DetectionResult.Source source) {
-        this.id            = id;
-        this.capturedAt    = Instant.now();
-        this.direction     = direction;
-        this.url           = url;
-        this.wasmBytes     = wasmBytes;
-        this.detectionSource = source;
+                       byte[] wasmBytes, WasmDetector.DetectionResult.Source source,
+                       HttpRequestResponse requestResponse) {
+        this.id               = id;
+        this.capturedAt       = Instant.now();
+        this.direction        = direction;
+        this.url              = url;
+        this.wasmBytes        = wasmBytes;
+        this.detectionSource  = source;
+        this.requestResponse  = requestResponse;
     }
 
     public String displayLabel() {

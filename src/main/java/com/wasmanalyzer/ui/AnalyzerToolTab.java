@@ -12,12 +12,14 @@ import com.wasmanalyzer.parser.WasmParser;
 
 import javax.swing.*;
 import javax.swing.table.*;
+import javax.swing.text.*;
 import java.awt.*;
 import java.io.*;
 import java.nio.file.*;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.*;
+import java.util.regex.Pattern;
 
 public class AnalyzerToolTab {
 
@@ -54,6 +56,17 @@ public class AnalyzerToolTab {
     private final JButton exportWasmBtn;
     private final JButton exportWatBtn;
     private final JLabel patchStatus;
+
+    // Search
+    private final JTextField searchField;
+    private final JLabel searchStatus;
+    private final JButton searchPrevBtn;
+    private final JButton searchNextBtn;
+    private java.util.List<int[]> searchMatches;
+    private int searchIndex;
+    private JTextArea searchTarget;
+    private final DefaultHighlighter.DefaultHighlightPainter searchHighlightAll;
+    private final DefaultHighlighter.DefaultHighlightPainter searchHighlightCurrent;
 
     // Settings tab (embedded)
     private final SettingsPanel settingsPanel;
@@ -125,8 +138,41 @@ public class AnalyzerToolTab {
         settingsPanel = new SettingsPanel();
         detailTabs.addTab("Settings", settingsPanel.getComponent());
 
+        // ── SEARCH BAR (above tabs) ──────────────────────────────
+        searchField = new JTextField(20);
+        searchField.setToolTipText("Search in the active tab");
+        searchStatus = new JLabel(" ");
+        searchHighlightAll    = new DefaultHighlighter.DefaultHighlightPainter(new Color(255, 255, 150));
+        searchHighlightCurrent = new DefaultHighlighter.DefaultHighlightPainter(new Color(255, 200, 50));
+        searchPrevBtn = new JButton("\u25B2");
+        searchNextBtn = new JButton("\u25BC");
+        searchPrevBtn.setEnabled(false);
+        searchNextBtn.setEnabled(false);
+        searchPrevBtn.setToolTipText("Previous match");
+        searchNextBtn.setToolTipText("Next match");
+
+        JButton searchBtn = new JButton("Find");
+        searchBtn.addActionListener(e -> doSearch());
+        searchField.addActionListener(e -> doSearch());
+        searchPrevBtn.addActionListener(e -> searchNav(-1));
+        searchNextBtn.addActionListener(e -> searchNav(1));
+
+        JPanel searchBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        searchBar.add(new JLabel("Search:"));
+        searchBar.add(searchField);
+        searchBar.add(searchBtn);
+        searchBar.add(searchPrevBtn);
+        searchBar.add(searchNextBtn);
+        searchBar.add(searchStatus);
+
+        detailTabs.addChangeListener(e -> clearSearch());
+
+        JPanel rightPanel = new JPanel(new BorderLayout(4, 4));
+        rightPanel.add(searchBar, BorderLayout.NORTH);
+        rightPanel.add(detailTabs, BorderLayout.CENTER);
+
         // ── SPLIT ────────────────────────────────────────────────
-        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, tablePanel, detailTabs);
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, tablePanel, rightPanel);
         split.setDividerLocation(420);
         split.setResizeWeight(0.35);
 
@@ -143,6 +189,110 @@ public class AnalyzerToolTab {
     public JComponent getComponent() { return root; }
     public WasmCaptureStore getStore() { return store; }
 
+    private void doSearch() {
+        String query = searchField.getText().trim();
+        if (query.isEmpty()) {
+            searchStatus.setText("Enter a search term.");
+            return;
+        }
+        Pattern pattern;
+        try {
+            pattern = Pattern.compile(query, Pattern.CASE_INSENSITIVE);
+        } catch (Exception e) {
+            searchStatus.setText("Invalid regex.");
+            return;
+        }
+
+        JTextArea target = switch (detailTabs.getTitleAt(detailTabs.getSelectedIndex())) {
+            case "Overview" -> overviewPane;
+            case "WAT" -> watPane;
+            case "Secrets" -> secretsPane;
+            case "Security" -> securityPane;
+            case "Strings" -> stringsPane;
+            case "Source Map" -> sourcemapPane;
+            default -> null;
+        };
+        if (target == null) {
+            searchStatus.setText("Search not supported for this tab.");
+            return;
+        }
+
+        String text = target.getText();
+        if (text == null || text.isEmpty()) {
+            searchStatus.setText("No content to search.");
+            return;
+        }
+
+        // Clear previous search from any text area
+        clearSearch();
+
+        // Find all matches
+        var matcher = pattern.matcher(text);
+        java.util.ArrayList<int[]> matches = new java.util.ArrayList<>();
+        while (matcher.find()) {
+            matches.add(new int[]{matcher.start(), matcher.end()});
+        }
+
+        if (matches.isEmpty()) {
+            searchStatus.setText("No matches found.");
+            return;
+        }
+
+        // Store search state
+        searchMatches = matches;
+        searchIndex = 0;
+        searchTarget = target;
+
+        // Highlight all matches — current in darker yellow, rest in light yellow
+        Highlighter h = target.getHighlighter();
+        h.removeAllHighlights();
+        try {
+            for (int i = 0; i < matches.size(); i++) {
+                int[] m = matches.get(i);
+                h.addHighlight(m[0], m[1], i == 0 ? searchHighlightCurrent : searchHighlightAll);
+            }
+        } catch (BadLocationException ignored) {}
+
+        // Scroll to first match
+        target.setCaretPosition(matches.get(0)[0]);
+        target.requestFocusInWindow();
+
+        searchPrevBtn.setEnabled(matches.size() > 1);
+        searchNextBtn.setEnabled(matches.size() > 1);
+        searchStatus.setText("1/" + matches.size());
+    }
+
+    private void searchNav(int direction) {
+        if (searchMatches == null || searchTarget == null) return;
+        if (searchMatches.size() <= 1) return;
+
+        searchIndex = (searchIndex + direction + searchMatches.size()) % searchMatches.size();
+
+        Highlighter h = searchTarget.getHighlighter();
+        h.removeAllHighlights();
+        try {
+            for (int i = 0; i < searchMatches.size(); i++) {
+                int[] m = searchMatches.get(i);
+                h.addHighlight(m[0], m[1], i == searchIndex ? searchHighlightCurrent : searchHighlightAll);
+            }
+        } catch (BadLocationException ignored) {}
+
+        searchTarget.setCaretPosition(searchMatches.get(searchIndex)[0]);
+        searchTarget.requestFocusInWindow();
+        searchStatus.setText((searchIndex + 1) + "/" + searchMatches.size());
+    }
+
+    private void clearSearch() {
+        if (searchTarget != null) {
+            searchTarget.getHighlighter().removeAllHighlights();
+        }
+        searchMatches = null;
+        searchIndex = 0;
+        searchTarget = null;
+        searchPrevBtn.setEnabled(false);
+        searchNextBtn.setEnabled(false);
+    }
+
     public void shutdown() {
         bgPool.shutdownNow();
         sourceMapProber.shutdown();
@@ -158,7 +308,8 @@ public class AnalyzerToolTab {
     public void addCapture(byte[] wasmBytes, String url, com.wasmanalyzer.detector.WasmDetector.DetectionResult.Source source, WasmCapture.Direction direction) {
         WasmCapture capture = new WasmCapture(
             UUID.randomUUID().toString(),
-            direction, url, wasmBytes, source
+            direction, url, wasmBytes, source,
+            null
         );
         store.add(capture);
         
@@ -229,8 +380,11 @@ public class AnalyzerToolTab {
         List<WasmCapture> all = store.getAll();
         for (int i = 0; i < all.size(); i++) {
             if (all.get(i).id.equals(c.id)) {
-                int secrets = c.secrets != null ? c.secrets.size() : -1;
-                tableModel.setValueAt(secrets >= 0 ? String.valueOf(secrets) : "…", i, 3);
+                int secCount  = c.secrets != null ? c.secrets.size() : 0;
+                int vulnCount = c.securityFindings != null ? c.securityFindings.size() : 0;
+                int totalIssues = secCount + vulnCount;
+                boolean done = c.secrets != null && c.securityFindings != null;
+                tableModel.setValueAt(done ? String.valueOf(totalIssues) : "…", i, 3);
                 tableModel.setValueAt(c.sourceMapFound ? "YES" : (c.sourceMapUrl != null ? "no" : "…"), i, 4);
                 break;
             }
@@ -283,7 +437,7 @@ public class AnalyzerToolTab {
 
         // Secrets
         if (c.secrets != null) {
-            secretsPane.setText(buildSecretsText(c.secrets));
+            secretsPane.setText(buildSecretsText(c.secrets, c.watText));
         } else {
             secretsPane.setText("Scanning… (background)");
         }
@@ -309,13 +463,19 @@ public class AnalyzerToolTab {
             for (var f : c.securityFindings) {
                 if (!f.severity().equals(lastSev)) {
                     sec.append("\n[").append(f.severity()).append("] ").append(f.title()).append("\n");
-                    sec.append("─".repeat(50)).append("\n");
+                    sec.append("─".repeat(60)).append("\n");
                     lastSev = f.severity();
                 }
-                sec.append("  ID     : ").append(f.id()).append("\n");
-                sec.append("  Desc   : ").append(f.description()).append("\n");
-                sec.append("  Evidence: ").append(f.evidence()).append("\n");
-                sec.append("  Fix    : ").append(f.recommendation()).append("\n\n");
+                sec.append("  ID        : ").append(f.id()).append("\n");
+                sec.append("  Severity  : ").append(f.severity()).append("\n");
+                sec.append("  Desc      : ").append(f.description()).append("\n");
+                sec.append("  Evidence  : ").append(f.evidence()).append("\n");
+                String ctx = extractWatContext(c.watText, f.evidence());
+                if (!ctx.isEmpty()) {
+                    sec.append(ctx);
+                }
+                sec.append("  Risk      : ").append(riskDescription(f.id())).append("\n");
+                sec.append("  Fix       : ").append(f.recommendation()).append("\n\n");
             }
             securityPane.setText(sec.toString());
         } else {
@@ -336,7 +496,65 @@ public class AnalyzerToolTab {
         sourcemapPane.setCaretPosition(0);
     }
 
-    private String buildSecretsText(List<SecretScanner.SecretFinding> findings) {
+    private String riskDescription(String findingId) {
+        return switch (findingId) {
+            case "HARDCODE_SECRET" ->
+                "Attackers can extract hardcoded secrets by decompiling the WASM binary using browser DevTools or wasm2wat. This can lead to account takeover, data breach, or unauthorized API access.";
+            case "WEAK_CRYPTO" ->
+                "Weak cryptographic algorithms (MD5, RC4, DES) are computationally cheap to break. An attacker can reverse or forge cryptographically protected data.";
+            case "SOURCEMAP_LEAK" ->
+                "Source map files (.wasm.map) recreate the original source code with variable names and comments, exposing application logic and business rules to anyone.";
+            case "INTERNAL_ENDPOINT" ->
+                "Hardcoded internal IPs/endpoints reveal network topology. Attackers can target internal services directly or use the endpoint as a pivot point.";
+            case "DANGEROUS_IMPORT" ->
+                "Imported functions like 'emscripten_memcpy' or WASI syscalls can cause memory corruption or arbitrary behavior if called with crafted inputs.";
+            case "MEMORY_CORRUPTION" ->
+                "Unsigned memory loads without bounds checking can read out-of-bounds memory, leading to information disclosure or control flow hijacking.";
+            case "INJECTION_TARGET" ->
+                "Dynamic calls (call_indirect, table.set) can be exploited to hijack control flow by manipulating the function table, leading to arbitrary code execution.";
+            case "CLIENT_BYPASS" ->
+                "Client-side authorization checks run in WASM can be patched or bypassed trivially. An attacker can modify the binary or hook the function to bypass restrictions.";
+            case "STACKTRACE_LEAK" ->
+                "Error messages containing file paths, line numbers, or stack traces reveal internal application structure and aid vulnerability discovery.";
+            case "DEBUG_SYMBOLS" ->
+                "Debug/test exports expose internal function names and potential attack surface. They indicate a production build with debugging artifacts.";
+            case "LARGE_MEMORY" ->
+                "Excessive memory allocations can cause denial of service by exhausting browser/system memory. User browsers may crash or become unresponsive.";
+            default -> "Review the finding in context to assess business impact.";
+        };
+    }
+
+    private String extractWatContext(String wat, String evidence) {
+        if (wat == null || wat.isEmpty() || evidence == null || evidence.isEmpty())
+            return "";
+
+        String[] lines = wat.split("\n", -1);
+        String evidenceEsc = Pattern.quote(evidence.trim());
+        Pattern p;
+        try {
+            p = Pattern.compile(evidenceEsc, Pattern.CASE_INSENSITIVE);
+        } catch (Exception e) {
+            return "";
+        }
+
+        for (int i = 0; i < lines.length; i++) {
+            if (p.matcher(lines[i]).find()) {
+                int start = Math.max(0, i - 5);
+                int end = Math.min(lines.length, i + 6);
+                StringBuilder ctx = new StringBuilder();
+                ctx.append("  --- WAT context ---\n");
+                for (int j = start; j < end; j++) {
+                    String prefix = (j == i) ? " >" : "  ";
+                    ctx.append(String.format("%s %4d: %s%n", prefix, j + 1, lines[j]));
+                }
+                ctx.append("  -------------------\n");
+                return ctx.toString();
+            }
+        }
+        return "";
+    }
+
+    private String buildSecretsText(List<SecretScanner.SecretFinding> findings, String watText) {
         if (findings.isEmpty()) return "No secrets found.";
         StringBuilder sb = new StringBuilder();
         sb.append(findings.size()).append(" finding(s):\n\n");
@@ -349,7 +567,12 @@ public class AnalyzerToolTab {
             }
             sb.append("  Rule    : ").append(f.ruleName()).append("\n");
             sb.append("  Match   : ").append(f.match()).append("\n");
-            sb.append("  Context : ").append(f.context()).append("\n\n");
+            sb.append("  Context : ").append(f.context()).append("\n");
+            String ctx = extractWatContext(watText, f.match());
+            if (!ctx.isEmpty()) {
+                sb.append(ctx);
+            }
+            sb.append("\n");
         }
         return sb.toString();
     }

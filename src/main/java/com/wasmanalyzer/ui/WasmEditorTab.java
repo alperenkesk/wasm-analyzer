@@ -85,7 +85,14 @@ public class WasmEditorTab implements ExtensionProvidedHttpRequestEditor,
 
     @Override
     public boolean isEnabledFor(HttpRequestResponse rr) {
-        return true;
+        if (rr.request() == null) return false;
+
+        String url = rr.request().url();
+        if (url != null && url.toLowerCase().endsWith(".wasm")) return true;
+
+        byte[] body = extractBody(rr);
+        if (body == null || body.length < 4) return false;
+        return detector.isWasm(body) || detector.tryDecodeBase64Wasm(body) != null;
     }
 
     @Override
@@ -98,12 +105,16 @@ public class WasmEditorTab implements ExtensionProvidedHttpRequestEditor,
             String url  = rr.request() != null ? rr.request().url() : null;
 
             if (body == null || body.length == 0) {
-                if (url != null && url.toLowerCase().endsWith(".wasm")) {
-                    overviewArea.setText("WASM request detected. Waiting for response...");
-                    watArea.setText("WASM request detected. Waiting for response...");
+                if (forResponse) {
+                    overviewArea.setText("Waiting for response...");
+                    watArea.setText("Waiting for response...");
+                } else if (url != null && url.toLowerCase().endsWith(".wasm")) {
+                    overviewArea.setText("Fetching WASM...");
+                    watArea.setText("Fetching WASM...");
+                    fetchWasmFromUrl(url);
                 } else {
-                    overviewArea.setText("No body content.");
-                    watArea.setText("No body content.");
+                    overviewArea.setText("No WASM content.");
+                    watArea.setText("No WASM content.");
                 }
                 return;
             }
@@ -164,6 +175,43 @@ public class WasmEditorTab implements ExtensionProvidedHttpRequestEditor,
     @Override
     public HttpResponse getResponse() {
         return lastResponse;
+    }
+
+    private void fetchWasmFromUrl(String url) {
+        final long myVersion = requestVersion.incrementAndGet();
+        Thread t = new Thread(() -> {
+            try {
+                HttpRequest req = HttpRequest.httpRequestFromUrl(url);
+                HttpRequestResponse rr = WasmAnalyzerExtension.api.http().sendRequest(req);
+                if (rr == null || rr.response() == null || requestVersion.get() != myVersion) return;
+                byte[] respBody = rr.response().body().getBytes();
+                if (respBody == null || respBody.length < 4) return;
+
+                WasmDetector.DetectionResult result = detector.detect(respBody, url, rr.response().headerValue("Content-Type"));
+                if (!result.detected || requestVersion.get() != myVersion) return;
+
+                byte[] snap = Arrays.copyOf(result.wasmBytes, result.wasmBytes.length);
+                WasmParseResult pr = parser.parse(snap);
+                String wat = patcher.decompile(snap);
+                if (requestVersion.get() != myVersion) return;
+
+                SwingUtilities.invokeLater(() -> {
+                    if (requestVersion.get() != myVersion) return;
+                    currentWasmBytes = snap;
+                    overviewArea.setText(buildOverview(pr));
+                    overviewArea.setCaretPosition(0);
+                    watArea.setText(wat);
+                    watArea.setCaretPosition(0);
+                });
+            } catch (Exception e) {
+                SwingUtilities.invokeLater(() -> {
+                    overviewArea.setText("Failed to fetch WASM: " + e.getMessage());
+                    watArea.setText("Failed to fetch WASM.");
+                });
+            }
+        }, "wasm-editor-fetch");
+        t.setDaemon(true);
+        t.start();
     }
 
     private void onRecompile() {
