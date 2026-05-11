@@ -22,9 +22,17 @@ WASM Analyzer is a Burp Suite extension that enables security researchers and de
 - **Client-Side Bypass Detection** — Identifies functions that can be exploited for auth bypass
 - **Source Map Probing** — Automatically probes for `.wasm.map` files
 
+### Burp Issue Reporting
+- **Audit Issues** — Automatically reports secrets and vulnerabilities as Burp AuditIssues in the Issue Activity / Site Map panel
+- **Vulnerability Classifications** — Each issue includes CWE and OWASP Top 10 2021 mappings with reference links
+- **Severity & Confidence** — Properly mapped severity (HIGH/MEDIUM/LOW/INFORMATION) and confidence levels
+- **Request/Response Context** — Each issue carries the original HTTP request/response pair
+- **WAT Code Context** — 5 lines above and 5 lines below each finding's match in the WAT disassembly
+
 ### Integration
-- **Message Editor Tab** — View WASM analysis directly in request/response tabs
-- **Context Menu** — Right-click to send any WASM payload to the analyzer
+- **Message Editor Tab** — View WASM analysis directly in request/response tabs; proactively fetches WASM on .wasm URL intercept
+- **Context Menu** — Right-click to send any WASM payload to the analyzer; disabled capture-on-response hint for .wasm URLs
+- **Search with Highlight** — Search within any analyzer tab with yellow highlighting and Prev/Next navigation
 - **Export Capabilities** — Save analyzed WASM binaries and WAT disassembly
 
 ## 📦 Installation
@@ -73,21 +81,21 @@ When viewing a request/response with WASM content, a **WASM** tab appears in the
 
 ## 🔍 Security Rules
 
-The security scanner detects the following vulnerability types:
+The security scanner detects the following vulnerability types with CWE and OWASP Top 10 2021 classifications:
 
-| Rule | Severity | Description |
-|------|:--------:|-------------|
-| `HARDCODE_SECRET` | CRITICAL | Hardcoded API keys, secrets, or credentials |
-| `INJECTION_TARGET` | CRITICAL | Dynamic function calls (call_indirect) — potential injection |
-| `WEAK_CRYPTO` | HIGH | Usage of MD5, RC4, DES, SHA-1 |
-| `SOURCEMAP_LEAK` | HIGH | `.wasm.map` reference — source code exposure risk |
-| `MEMORY_CORRUPTION` | HIGH | Unsigned memory loads without bounds checking |
-| `CLIENT_BYPASS` | HIGH | Functions like `is_admin`, `has_access` — client-side auth checks |
-| `INTERNAL_ENDPOINT` | MEDIUM | Hardcoded internal IPs or API endpoints |
-| `DANGEROUS_IMPORT` | MEDIUM | Dangerous native function imports |
-| `STACKTRACE_LEAK` | MEDIUM | Error messages revealing application structure |
-| `DEBUG_SYMBOLS` | LOW | Debug or test functions exported |
-| `LARGE_MEMORY` | MEDIUM | Excessive memory allocation (>256 pages) |
+| Rule | Severity | CWE | OWASP 2021 | Description |
+|------|:--------:|:---:|:----------:|-------------|
+| `HARDCODE_SECRET` | CRITICAL | [CWE-798](https://cwe.mitre.org/data/definitions/798.html) | [A07/A05](https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/) | Hardcoded API keys, secrets, or credentials |
+| `INJECTION_TARGET` | CRITICAL | [CWE-94](https://cwe.mitre.org/data/definitions/94.html) | [A03](https://owasp.org/Top10/A03_2021-Injection/) | Dynamic function calls (call_indirect) — potential injection |
+| `WEAK_CRYPTO` | HIGH | [CWE-327](https://cwe.mitre.org/data/definitions/327.html) | [A02](https://owasp.org/Top10/A02_2021-Cryptographic_Failures/) | Usage of MD5, RC4, DES, SHA-1 |
+| `SOURCEMAP_LEAK` | HIGH | [CWE-540](https://cwe.mitre.org/data/definitions/540.html) | [A01/A05](https://owasp.org/Top10/A01_2021-Broken_Access_Control/) | `.wasm.map` reference — source code exposure risk |
+| `MEMORY_CORRUPTION` | HIGH | [CWE-119](https://cwe.mitre.org/data/definitions/119.html) | [A04](https://owasp.org/Top10/A04_2021-Insecure_Design/) | Unsigned memory loads without bounds checking |
+| `CLIENT_BYPASS` | HIGH | [CWE-602](https://cwe.mitre.org/data/definitions/602.html) | [A04](https://owasp.org/Top10/A04_2021-Insecure_Design/) | Functions like `is_admin`, `has_access` — client-side auth checks |
+| `INTERNAL_ENDPOINT` | MEDIUM | [CWE-200](https://cwe.mitre.org/data/definitions/200.html) | [A01](https://owasp.org/Top10/A01_2021-Broken_Access_Control/) | Hardcoded internal IPs or API endpoints |
+| `DANGEROUS_IMPORT` | MEDIUM | [CWE-1104](https://cwe.mitre.org/data/definitions/1104.html) | [A06](https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/) | Dangerous native function imports |
+| `STACKTRACE_LEAK` | MEDIUM | [CWE-209](https://cwe.mitre.org/data/definitions/209.html) | [A05](https://owasp.org/Top10/A05_2021-Security_Misconfiguration/) | Error messages revealing application structure |
+| `DEBUG_SYMBOLS` | LOW | [CWE-489](https://cwe.mitre.org/data/definitions/489.html) | [A05](https://owasp.org/Top10/A05_2021-Security_Misconfiguration/) | Debug or test functions exported |
+| `LARGE_MEMORY` | MEDIUM | [CWE-770](https://cwe.mitre.org/data/definitions/770.html) | [A04](https://owasp.org/Top10/A04_2021-Insecure_Design/) | Excessive memory allocation (>256 pages) |
 
 ### Secret Scanner Rules
 
@@ -118,7 +126,8 @@ com.wasmanalyzer/
 │   └── ...                          # Section, import, export models
 ├── scanner/
 │   ├── WasmSecurityScanner.java     # Security vulnerability rules
-│   └── SecretScanner.java           # Credential detection
+│   ├── SecretScanner.java           # Credential detection
+│   └── WasmIssueReporter.java       # AudıtIssue reporting to Burp Site Map
 ├── handler/
 │   └── WasmHttpHandler.java         # HTTP traffic interceptor
 ├── sourcemap/
