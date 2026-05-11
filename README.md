@@ -15,24 +15,24 @@ WASM Analyzer is a Burp Suite extension that enables security researchers and de
 - **Pure Java Parser** — No external dependencies; works out of the box
 - **WAT Disassembly** — Converts WASM binaries to WebAssembly Text Format (WAT)
 - **HTTP Traffic Interception** — Captures WASM in both request and response directions
+- **Proactive WASM Fetch** — On intercept, automatically fetches WASM from `.wasm` URLs for instant analysis
 
-### Security Analysis
-- **Vulnerability Scanner** — 10+ WASM-specific security rules (CRITICAL, HIGH, MEDIUM, LOW)
-- **Secret Detection** — Scans for credentials, API keys, tokens, and sensitive data
+### Security & Vulnerability Analysis
+- **Vulnerability Scanner** — 11 WASM-specific security rules across CRITICAL/HIGH/MEDIUM/LOW/INFO severities
+- **Secret Detection** — Scans for credentials, API keys, tokens, and sensitive data via targeted regex
 - **Client-Side Bypass Detection** — Identifies functions that can be exploited for auth bypass
 - **Source Map Probing** — Automatically probes for `.wasm.map` files
+- **Vulnerability Classifications** — Each finding mapped to CWE and OWASP Top 10 2021
 
 ### Burp Issue Reporting
-- **Audit Issues** — Automatically reports secrets and vulnerabilities as Burp AuditIssues in the Issue Activity / Site Map panel
-- **Vulnerability Classifications** — Each issue includes CWE and OWASP Top 10 2021 mappings with reference links
-- **Severity & Confidence** — Properly mapped severity (HIGH/MEDIUM/LOW/INFORMATION) and confidence levels
-- **Request/Response Context** — Each issue carries the original HTTP request/response pair
-- **WAT Code Context** — 5 lines above and 5 lines below each finding's match in the WAT disassembly
+- **Audit Issues** — Automatically reports all secrets and vulnerabilities as Burp `AuditIssue` objects in the Issue Activity / Site Map panel
+- **Severity & Confidence** — Mapped to Burp's native severity (HIGH/MEDIUM/LOW/INFORMATION) and confidence (CERTAIN/FIRM) levels
+- **Rich Issue Detail** — Each issue includes: finding description, evidence, WAT code context (11 lines), risk assessment, remediation steps, CWE/OWASP references, and original request/response messages
 
 ### Integration
-- **Message Editor Tab** — View WASM analysis directly in request/response tabs; proactively fetches WASM on .wasm URL intercept
-- **Context Menu** — Right-click to send any WASM payload to the analyzer; disabled capture-on-response hint for .wasm URLs
-- **Search with Highlight** — Search within any analyzer tab with yellow highlighting and Prev/Next navigation
+- **Message Editor Tab** — "WASM" tab in request/response editors with Overview + WAT views
+- **Context Menu** — Right-click "Send to WASM Analyzer" for any WASM payload (hints on .wasm URL capture)
+- **Search with Highlight** — Search within any analyzer tab, matches highlighted in yellow with ▲/▼ navigation
 - **Export Capabilities** — Save analyzed WASM binaries and WAT disassembly
 
 ## 📦 Installation
@@ -66,8 +66,9 @@ When WASM traffic passes through Burp's proxy, the extension automatically:
 3. Generates WAT disassembly
 4. Scans for secrets and vulnerabilities
 5. Probes for source maps
+6. Reports findings as Burp Audit Issues with CWE/OWASP classifications
 
-Results appear in the **WASM Analyzer** tab.
+Results appear in the **WASM Analyzer** tab and in Burp's **Issue Activity** / **Site Map**.
 
 ### 2. Manual Analysis
 
@@ -77,7 +78,11 @@ Right-click on any request/response containing WASM and select **Send to WASM An
 
 When viewing a request/response with WASM content, a **WASM** tab appears in the message editor showing:
 - **Overview** — Section structure, imports, exports, extracted strings
-- **WAT** — WebAssembly Text Format disassembly
+- **WAT** — WebAssembly Text Format disassembly (with search and highlighting)
+
+### 4. Search
+
+Use the **Search** bar in the WASM Analyzer tab to find functions, strings, or keywords across any active tab. Results are highlighted with yellow markers; use **▲** / **▼** buttons to navigate between matches.
 
 ## 🔍 Security Rules
 
